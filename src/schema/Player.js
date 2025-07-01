@@ -1,4 +1,5 @@
-import { Schema, type } from '@colyseus/schema';
+import { ArraySchema, Schema, type } from '@colyseus/schema';
+import { Card } from './Card.js';
 
 export class Player extends Schema {
   constructor() {
@@ -6,8 +7,8 @@ export class Player extends Schema {
     this.id = "";
     this.name = "";
     this.seat = "";
-    this.hand = [];
-    this.bid = -1;
+    this.hand = new ArraySchema();
+    this.bid = 0;
     this.tricksWon = 0;
     this.score = 0;
   }
@@ -16,7 +17,7 @@ export class Player extends Schema {
     type("string")(this.prototype, "id");
     type("string")(this.prototype, "name");
     type("string")(this.prototype, "seat");
-    type(["string"])(this.prototype, "hand");
+    type([ Card ])(this.prototype, "hand");
     type("number")(this.prototype, "bid");
     type("number")(this.prototype, "tricksWon");
     type("number")(this.prototype, "score");

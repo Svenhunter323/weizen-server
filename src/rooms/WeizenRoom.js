@@ -1,6 +1,8 @@
 import { Room } from 'colyseus';
+import {ArraySchema } from '@colyseus/schema';
 import { WeizenState } from '../schema/WeizenState.js';
 import { Player } from '../schema/Player.js';
+import { Card } from '../schema/Card.js';
 
 const PHASES = {
   WAITING: "waiting",
@@ -44,9 +46,9 @@ export class WeizenRoom extends Room {
     player.id = client.sessionId;
     player.name = options.name || `Player-${this.state.players.size + 1}`;
     // player.seat = `Seat-${this.state.players.size + 1}`;
-    player.seat = `${this.state.players.size + 1}`;
-    player.hand = [];
-    player.bid = -1;
+    player.seat = `${this.state.players.size}`;
+    player.hand = new ArraySchema();
+    player.bid = 0;
     player.tricksWon = 0;
     player.score = 0;
 
@@ -83,7 +85,7 @@ export class WeizenRoom extends Room {
 
     var keys = Object.keys(this.readyUser);
 
-    console.log(`✅ Player Ready: ${client.sessionId}\n current: ${this.state.players.size}\n max: ${this.state.players.size}`);
+    console.log(`✅ Player Ready: ${client.sessionId}\n current: ${keys.length}\n max: ${this.state.players.size}`);
     
     if (this.state.players.size === this.maxClients) {
       if (keys.length === this.maxClients) {
@@ -96,7 +98,9 @@ export class WeizenRoom extends Room {
     this.dealReadyUser[client.sessionId] = ready;
 
     var keys = Object.keys(this.dealReadyUser);
-
+    
+    console.log(`✅ Player Deal Ready: ${client.sessionId}\n current: ${keys.length}\n max: ${this.state.players.size}`);
+    
     if (this.state.players.size === this.maxClients) {
       if (keys.length === this.maxClients) {
         this.startBidding();
@@ -115,48 +119,29 @@ export class WeizenRoom extends Room {
     console.log('🃏 Dealing cards...');
     const deck = this.generateDeck();
     this.shuffle(deck);
-    const lastCard = deck[deck.length - 1];
-    const trump_suit = lastCard.split("_")[1];
+    const trumpCard = deck[deck.length - 1];
     const hands = this.dealToPlayers(deck);
 
     for (const [id, player] of this.state.players.entries()) {
-      // player.hand = hands[id];
-      this.safeAssignHand(player, hands[id]);
-      player.bid = -1;
+      player.hand = new ArraySchema(...hands[id]);
+      player.bid = 0;
       player.tricksWon = 0;
-      console.log(`✅ Hand for ${player.name}:`, player.hand.items);
+      // console.log(player.hand.map(card => `${card.rank} of ${card.suit}`));
+      console.log(`✅ Hand for ${player.name}:`, player.hand.map(card => `${card.rank} of ${card.suit}`));
     }
   }
-  safeAssignHand(player, newHand) {
-    console.log(`🟢 [AssignHand] Player ${player.id}:`, newHand);
 
-    if (!Array.isArray(newHand)) {
-      console.error(`❌ [ERROR] player.hand assigned NON-ARRAY value for player ${player.id}:`, newHand);
-      newHand = [];  // fail-safe
-    } else {
-      for (let i = 0; i < newHand.length; i++) {
-        if (typeof newHand[i] !== 'string') {
-          console.error(`❌ [ERROR] player.hand contains NON-STRING at index ${i}:`, newHand[i]);
-        }
-      }
-    }
-
-    player.hand = newHand;
-  }
-
-  safePushHand(player, card) {
-    if (typeof card !== 'string') {
-      console.error(`❌ [ERROR] Attempting to push NON-STRING card for player ${player.id}:`, card);
-      return;
-    }
-    player.hand.push(card);
-    console.log(`🟢 [PushHand] Player ${player.id} now has:`, player.hand);
-  }
-  
   generateDeck() {
     const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
     const ranks = ['2', '3', '4', '5', '6','7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
-    return suits.flatMap(suit => ranks.map(rank => `${rank}_${suit}`));
+    
+    const deck = [];
+    for (const suit of suits) {
+      for (const rank of ranks) {
+        deck.push(new Card({ rank, suit }));
+      }
+    }
+    return deck;
   }
 
   shuffle(array) {
@@ -226,12 +211,16 @@ export class WeizenRoom extends Room {
     this.broadcast("promptPlay", { playerId: currentId });
   }
 
-  handlePlayCard(client, card) {
+  handlePlayCard(client, playedCard) {
     const player = this.state.players.get(client.sessionId);
     if (!player || this.state.phase !== PHASES.PLAYING) return;
 
-    console.log(`✅ ${player.name} played ${card}`);
-    player.hand = player.hand.filter(c => c !== card);
+    console.log(`✅ ${player.name} played ${playedCard.rank} of ${playedCard.suit}`);
+
+    // Remove the card by matching rank and suit
+    const newHand = player.hand.filter(c => !(c.rank === playedCard.rank && c.suit === playedCard.suit));
+    player.hand = new ArraySchema(...newHand);
+
     player.tricksWon += 1; // Simplified trick count
 
     this.state.currentTurnIndex++;
@@ -276,9 +265,9 @@ export class WeizenRoom extends Room {
   prepareNextRound() {
     console.log('🔄 Preparing next round');
     for (const player of this.state.players.values()) {
-      player.bid = -1;
+      player.bid = 0;
       player.tricksWon = 0;
-      player.hand = [];
+      player.hand = new ArraySchema();
     }
     this.startGame();
   }
