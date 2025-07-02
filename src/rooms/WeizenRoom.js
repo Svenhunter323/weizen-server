@@ -12,6 +12,21 @@ const PHASES = {
   SCORING: "scoring"
 };
 
+const BID = {
+  Pass: 0,
+  GreenDames: 1,
+  AlleenGaan: 2,
+  Vraag_Meegaan: 3,
+  Misere: 4,
+  Pico: 5,
+  Abondance: 6,
+  SoloSlim: 7,
+  Troel: 8,
+};
+
+const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+const ranks = ['2', '3', '4', '5', '6','7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
+
 export class WeizenRoom extends Room {
   onCreate(options) {
     console.log('✅ WeizenRoom created');
@@ -20,11 +35,16 @@ export class WeizenRoom extends Room {
     this.maxClients = 4;
     this.readyUser = {};
     this.dealReadyUser = {};
+    this.cardPlayedUser = [];
+    this.trickSuit = "";
+    this.trickPlayerCards = {};
+    this.trumpCard = new Card("ace", "spades");
 
     this.onMessage("ready", (client, ready) => this.handleReady(client, ready));
     this.onMessage("deal", (client, ready) => this.handleDealReady(client, ready));
     this.onMessage("bid", (client, bid) => this.handleBid(client, bid));
     this.onMessage("playCard", (client, card) => this.handlePlayCard(client, card));
+    this.onMessage("playCardReady", (client) => this.handlePlayCardReady(client));
   }
 
   async onAuth(client, options) {
@@ -110,7 +130,8 @@ export class WeizenRoom extends Room {
 
   startGame() {
     console.log('✅ Starting game...');
-
+    
+    this.dealReadyUser = {};
     this.dealCards();
     this.state.phase = PHASES.DEALING;
   }
@@ -119,7 +140,7 @@ export class WeizenRoom extends Room {
     console.log('🃏 Dealing cards...');
     const deck = this.generateDeck();
     this.shuffle(deck);
-    const trumpCard = deck[deck.length - 1];
+    this.trumpCard = deck[deck.length - 1];
     const hands = this.dealToPlayers(deck);
 
     for (const [id, player] of this.state.players.entries()) {
@@ -132,9 +153,6 @@ export class WeizenRoom extends Room {
   }
 
   generateDeck() {
-    const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
-    const ranks = ['2', '3', '4', '5', '6','7', '8', '9', '10', 'jack', 'queen', 'king', 'ace'];
-    
     const deck = [];
     for (const suit of suits) {
       for (const rank of ranks) {
@@ -166,8 +184,8 @@ export class WeizenRoom extends Room {
   }
 
   startBidding() {
-    this.setupBiddingOrder();
     this.state.phase = PHASES.BIDDING;
+    this.setupBiddingOrder();
     this.promptNextBidder();
   }
 
@@ -187,20 +205,27 @@ export class WeizenRoom extends Room {
     if (!player || this.state.phase !== PHASES.BIDDING) return;
 
     player.bid = bid;
+    this.broadcast("promptBidRes", { playerId: player.id, bid: bid });
     console.log(`✅ Received bid from ${player.name}: ${bid}`);
 
     this.state.currentTurnIndex++;
     if (this.state.currentTurnIndex >= this.state.turnOrder.length) {
       console.log('✅ Bidding complete');
+      this.determinBiddingResult();
       this.startPlayPhase();
     } else {
       this.promptNextBidder();
     }
   }
 
+  determinBiddingResult() {
+
+  }
+
   startPlayPhase() {
     this.state.phase = PHASES.PLAYING;
     this.state.currentTurnIndex = 0;
+    this.trickSuit = "";
     console.log('🎮 Play phase started');
     this.promptNextPlayer();
   }
@@ -208,20 +233,51 @@ export class WeizenRoom extends Room {
   promptNextPlayer() {
     const currentId = this.state.turnOrder[this.state.currentTurnIndex];
     console.log(`🔔 Waiting for move from: ${currentId}`);
-    this.broadcast("promptPlay", { playerId: currentId });
+    this.broadcast("promptPlay", { playerId: currentId, suit: this.trickSuit });
   }
 
   handlePlayCard(client, playedCard) {
     const player = this.state.players.get(client.sessionId);
     if (!player || this.state.phase !== PHASES.PLAYING) return;
 
+    if (this.trickSuit == "") {
+      this.trickSuit = playedCard.suit;
+    }
+
+    let a = [];
+    
+    let suitcards = player.hand.filter(c => (c.suit === this.trickSuit));
+    if (playedCard.suit != this.trickSuit && suitcards.length > 0) { // resend turn;
+      this.promptNextPlayer();
+      return;
+    }
+
     console.log(`✅ ${player.name} played ${playedCard.rank} of ${playedCard.suit}`);
+
+    this.trickPlayerCards[client.sessionId] = playedCard;
+
+    this.broadcast("promptPlayCard", { playerId: client.sessionId, card: playedCard });
 
     // Remove the card by matching rank and suit
     const newHand = player.hand.filter(c => !(c.rank === playedCard.rank && c.suit === playedCard.suit));
-    player.hand = new ArraySchema(...newHand);
 
-    player.tricksWon += 1; // Simplified trick count
+    player.hand.clear();
+    player.hand.push(...newHand)
+    // player.hand = new ArraySchema(...newHand);
+
+    // player.tricksWon += 1; // Simplified trick count
+  }
+
+  handlePlayCardReady(client) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || this.state.phase !== PHASES.PLAYING) return;
+
+    if (this.cardPlayedUser.indexOf(player.id) >= 0) return;
+    this.cardPlayedUser.push(player.id);
+
+    if (this.cardPlayedUser.length < this.maxClients) return;
+
+    this.cardPlayedUser = [];
 
     this.state.currentTurnIndex++;
     if (this.state.currentTurnIndex >= this.state.turnOrder.length) {
@@ -267,14 +323,51 @@ export class WeizenRoom extends Room {
     for (const player of this.state.players.values()) {
       player.bid = 0;
       player.tricksWon = 0;
-      player.hand = new ArraySchema();
+      // player.hand = new ArraySchema();
+      player.hand.clear();
     }
     this.startGame();
   }
 
   startNextTrick() {
+
+    // who is won & refresh players score
+    var winner = null;
+    for (const [id, player] of this.state.players.entries()) {
+      if (winner === null) {
+        winner = player;
+        continue;
+      }
+      let playedCard = this.trickPlayerCards[id];
+      let winnerCard = this.trickPlayerCards[winner.id];
+
+      let winnerRankVal = ranks.indexOf(winnerCard.rank);
+      if (winnerCard.suit == this.trickSuit) winnerRankVal += 13;
+      if (winnerCard.suit == this.trumpCard.suit) winnerRankVal += 13;
+
+      let rankVal = ranks.indexOf(playedCard.rank);
+      if (playedCard.suit == this.trickSuit) rankVal += 13;
+      if (playedCard.suit == this.trumpCard.suit) rankVal += 13;
+      if (rankVal > winnerRankVal) {
+        winner = player;
+      }      
+    }
+
+    winner.tricksWon += 1;
+    this.broadcast("tricksWon", { playerId: winner.id, card: this.trickPlayerCards[winner.id] });
+
+    this.trickSuit = "";
+    this.trickPlayerCards = {};
+    this.cardPlayedUser = [];
+
+    let winnerIndex = this.state.turnOrder.indexOf(winner.id);
+    this.rotateLeft(this.state.turnOrder, winnerIndex);
     this.state.currentTurnIndex = 0;
     console.log('🎯 Starting next trick');
     this.promptNextPlayer();
+  }
+  rotateLeft(arr, n) {
+    n = n % arr.length;
+    return arr.slice(n).concat(arr.slice(0, n));
   }
 }
