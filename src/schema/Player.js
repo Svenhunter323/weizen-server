@@ -11,6 +11,7 @@ export class Player extends Schema {
     this.bid = 0;
     this.tricksWon = 0;
     this.score = 0;
+    this.capturedCards = new ArraySchema();
   }
 
   static defineSchema() {
@@ -21,6 +22,7 @@ export class Player extends Schema {
     type("number")(this.prototype, "bid");
     type("number")(this.prototype, "tricksWon");
     type("number")(this.prototype, "score");
+    type([Card])(this.prototype, "capturedCards");
   }
 }
 Player.defineSchema();

@@ -3,6 +3,7 @@ import {ArraySchema } from '@colyseus/schema';
 import { WeizenState } from '../schema/WeizenState.js';
 import { Player } from '../schema/Player.js';
 import { Card } from '../schema/Card.js';
+import { BidEntry } from '../schema/BidEntry.js';
 
 const PHASES = {
   WAITING: "waiting",
@@ -14,14 +15,46 @@ const PHASES = {
 
 const BID = {
   Pass: 0,
-  GreenDames: 1,
-  AlleenGaan: 2,
-  Vraag_Meegaan: 3,
-  Misere: 4,
+  Vraag: 1,
+  Meegaan: 2,
+  AlleenGaan: 3,
+  GeenDames: 4,
   Pico: 5,
-  Abondance: 6,
-  SoloSlim: 7,
+  Misere: 6,
+  OpenMisere: 7,
   Troel: 8,
+  Abondance: 9,
+  AbondanceInTroef: 10,
+  SoloSlim: 11
+};
+
+const BID_PRIORITY = [
+  BID.Troel,
+  BID.SoloSlim,
+  BID.OpenMisere,
+  BID.AbondanceInTroef,
+  BID.Abondance,
+  BID.Pico,
+  BID.Misere,
+  BID.Vraag,
+  BID.Meegaan,
+  BID.AlleenGaan,
+  BID.GeenDames,
+  BID.Pass
+];
+
+const CONTRACT_SCORES = {
+  [BID.Vraag]: 10,
+  [BID.Meegaan]: 10,
+  [BID.AlleenGaan]: 20,
+  [BID.GeenDames]: -20, // penalty per Queen
+  [BID.Pico]: 25,
+  [BID.Misere]: 25,
+  [BID.OpenMisere]: 30,
+  [BID.Troel]: 30,
+  [BID.Abondance]: 40,
+  [BID.AbondanceInTroef]: 50,
+  [BID.SoloSlim]: 50
 };
 
 const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -144,7 +177,8 @@ export class WeizenRoom extends Room {
     const hands = this.dealToPlayers(deck);
 
     for (const [id, player] of this.state.players.entries()) {
-      player.hand = new ArraySchema(...hands[id]);
+      player.hand.clear(); //= new ArraySchema(...hands[id]);
+      player.hand.push(...hands[id]);
       player.bid = 0;
       player.tricksWon = 0;
       // console.log(player.hand.map(card => `${card.rank} of ${card.suit}`));
@@ -185,6 +219,7 @@ export class WeizenRoom extends Room {
 
   startBidding() {
     this.state.phase = PHASES.BIDDING;
+    this.state.bids.clear();
     this.setupBiddingOrder();
     this.promptNextBidder();
   }
@@ -196,6 +231,7 @@ export class WeizenRoom extends Room {
 
   promptNextBidder() {
     const currentId = this.state.turnOrder[this.state.currentTurnIndex];
+    this.state.currentBidderId = currentId; // 👈 sync to client
     console.log(`🔔 Waiting for bid from: ${currentId}`);
     this.broadcast("promptBid", { playerId: currentId });
   }
@@ -204,28 +240,57 @@ export class WeizenRoom extends Room {
     const player = this.state.players.get(client.sessionId);
     if (!player || this.state.phase !== PHASES.BIDDING) return;
 
+    try {
+      this.validateBid(player, bid);
+    } catch (err) {
+      client.send("error", { message: err.message });
+      return;
+    }
+
     player.bid = bid;
+
+    this.state.bids.push(new BidEntry().assign({
+      playerId: player.id,
+      bidType: bid
+    }));
+
     this.broadcast("promptBidRes", { playerId: player.id, bid: bid });
     console.log(`✅ Received bid from ${player.name}: ${bid}`);
 
     this.state.currentTurnIndex++;
     if (this.state.currentTurnIndex >= this.state.turnOrder.length) {
       console.log('✅ Bidding complete');
-      this.determinBiddingResult();
+
+      // ✅ New logic: resolve winner
+      const winningBid = this.resolveWinningBid();
+
+      if (!winningBid) {
+        console.log('🟠 All players passed. Restarting round...');
+        this.broadcast("allPlayersPassed");
+        this.prepareNextRound();
+        return;
+      }
+
+      // ✅ Store and broadcast winning contract
+      this.state.winningBid = winningBid;
+      this.broadcast("winningBid", {
+        playerId: winningBid.playerId,
+        bidType: winningBid.bidType
+      });
+
       this.startPlayPhase();
     } else {
       this.promptNextBidder();
     }
   }
 
-  determinBiddingResult() {
-
-  }
-
   startPlayPhase() {
     this.state.phase = PHASES.PLAYING;
     this.state.currentTurnIndex = 0;
     this.trickSuit = "";
+
+    this.configureContract();
+
     console.log('🎮 Play phase started');
     this.promptNextPlayer();
   }
@@ -299,32 +364,29 @@ export class WeizenRoom extends Room {
     return true;
   }
 
-  scoreRound() {
-    console.log('✅ Scoring phase...');
-    this.state.phase = PHASES.SCORING;
+scoreRound() {
+  console.log('✅ Scoring phase...');
+  this.state.phase = PHASES.SCORING;
 
-    for (const [id, player] of this.state.players.entries()) {
-      let scoreChange = 0;
-      if (player.tricksWon >= player.bid) {
-        scoreChange = 10;
-        console.log(`🏆 ${player.name} met bid! +10`);
-      } else {
-        scoreChange = -5;
-        console.log(`❌ ${player.name} failed bid. -5`);
-      }
-      player.score += scoreChange;
-    }
+  this.scoreContract();
 
-    setTimeout(() => this.prepareNextRound(), 3000);
-  }
+  setTimeout(() => this.prepareNextRound(), 3000);
+}
 
   prepareNextRound() {
     console.log('🔄 Preparing next round');
+
+    this.state.contractType = -1;
+    this.state.contractBidderId = "";
+    this.state.contractPartners.clear();
+    this.state.trumpSuit = "";
+
     for (const player of this.state.players.values()) {
       player.bid = 0;
       player.tricksWon = 0;
       // player.hand = new ArraySchema();
       player.hand.clear();
+      player.capturedCards.clear();
     }
     this.startGame();
   }
@@ -342,8 +404,9 @@ export class WeizenRoom extends Room {
       let winnerCard = this.trickPlayerCards[winner.id];
 
       let winnerRankVal = ranks.indexOf(winnerCard.rank);
-      if (winnerCard.suit == this.trickSuit) winnerRankVal += 13;
-      if (winnerCard.suit == this.trumpCard.suit) winnerRankVal += 13;
+      
+      if (this.contract.trumpSuit && winnerCard.suit == this.contract.trumpSuit) winnerRankVal += 13;
+      if (this.contract.trumpSuit && playedCard.suit == this.contract.trumpSuit) rankVal += 13;
 
       let rankVal = ranks.indexOf(playedCard.rank);
       if (playedCard.suit == this.trickSuit) rankVal += 13;
@@ -354,6 +417,12 @@ export class WeizenRoom extends Room {
     }
 
     winner.tricksWon += 1;
+
+    // NEW: Add all cards from the trick to winner's captured pile
+    for (const card of Object.values(this.trickPlayerCards)) {
+      winner.capturedCards.push(card);
+    }
+
     this.broadcast("tricksWon", { playerId: winner.id, card: this.trickPlayerCards[winner.id] });
 
     this.trickSuit = "";
@@ -369,5 +438,273 @@ export class WeizenRoom extends Room {
   rotateLeft(arr, n) {
     n = n % arr.length;
     return arr.slice(n).concat(arr.slice(0, n));
+  }
+  validateBid(player, bidType) {
+    if (!Object.values(BID).includes(bidType)) {
+      throw new Error('Invalid bid type!');
+    }
+
+    // Troel: must have 3 Aces in hand
+    if (bidType === BID.Troel) {
+      const aceCount = player.hand.filter(card => card.rank === 'A').length;
+      if (aceCount < 3) {
+        throw new Error('Troel requires 3 Aces!');
+      }
+    }
+
+    // Meegaan: only valid if Vraag already declared
+    if (bidType === BID.Meegaan) {
+      const vraagExists = this.state.biddingData.bids.some(b => b.bidType === BID.Vraag);
+      if (!vraagExists) {
+        throw new Error('Cannot Meegaan without Vraag!');
+      }
+
+      // Only one Meegaan allowed
+      const meegaanCount = this.state.biddingData.bids.filter(b => b.bidType === BID.Meegaan).length;
+      if (meegaanCount >= 1) {
+        throw new Error('Only one Meegaan allowed!');
+      }
+    }
+
+    // Pico: no special validation here yet
+    if (bidType === BID.Pico) {
+      // optionally: nothing needed here during bidding
+    }
+
+    // Misere, OpenMisere, GeenDames, etc. might not need special validation at bidding
+    // But you can add checks if you want!
+  }
+  resolveWinningBid() {
+    // Sort by BID_PRIORITY
+    const sortedBids = this.state.bids
+      .filter(b => b.bidType !== BID.Pass)
+      .sort((a, b) => BID_PRIORITY.indexOf(a.bidType) - BID_PRIORITY.indexOf(b.bidType));
+
+    if (sortedBids.length === 0) {
+      console.log('⚠️ All players passed!');
+      return null;
+    }
+
+    const winning = sortedBids[0];
+    console.log(`🏆 Winning bid: Player ${winning.playerId} with ${winning.bidType}`);
+
+    // Optionally store in state
+    this.state.winningBid = winning;
+
+    return winning;
+  }
+  configureContract() {
+    const bid = this.state.winningBid;
+    if (!bid) {
+      console.warn('⚠️ No winning bid found. Skipping contract configuration.');
+      return;
+    }
+
+    const bidType = bid.bidType;
+    const bidderId = bid.playerId;
+
+    // Store the contract configuration on room for easy access
+    this.contract = {
+      type: bidType,
+      bidderId: bidderId,
+      partners: [],
+      trumpSuit: null
+    };
+
+    // Default: use the dealer's last card as trump, if suit game
+    if (
+      bidType === BID.Vraag || 
+      bidType === BID.Meegaan || 
+      bidType === BID.AlleenGaan || 
+      bidType === BID.Abondance || 
+      bidType === BID.AbondanceInTroef || 
+      bidType === BID.Troel
+    ) {
+      this.contract.trumpSuit = this.trumpCard.suit;
+    }
+
+    // Misere and OpenMisere have NO trump
+    if (bidType === BID.Misere || bidType === BID.OpenMisere || bidType === BID.Pico || bidType === BID.GeenDames) {
+      this.contract.trumpSuit = null;
+    }
+
+    // Handle partners
+    if (bidType === BID.Vraag) {
+      // Vraag + Meegaan = team
+      const meegaanBid = Array.from(this.state.bids).find(b => b.bidType === BID.Meegaan);
+      if (meegaanBid) {
+        this.contract.partners = [bidderId, meegaanBid.playerId];
+        console.log(`✅ Vraag/Meegaan team: ${bidderId} and ${meegaanBid.playerId}`);
+      } else {
+        // Edge case: no Meegaan accepted
+        this.contract.partners = [bidderId];
+        console.warn('⚠️ Vraag with no Meegaan. Solo play assumed.');
+      }
+    } else if (bidType === BID.Meegaan) {
+      // Shouldn't happen alone, but safe fallback
+      this.contract.partners = [bidderId];
+    } else if (bidType === BID.AlleenGaan) {
+      // Solo vs 3
+      this.contract.partners = [bidderId];
+    } else if (
+      bidType === BID.Abondance || 
+      bidType === BID.AbondanceInTroef || 
+      bidType === BID.SoloSlim || 
+      bidType === BID.Pico || 
+      bidType === BID.Misere || 
+      bidType === BID.OpenMisere || 
+      bidType === BID.Troel
+    ) {
+      // Solo contracts
+      this.contract.partners = [bidderId];
+    }
+
+    // Sync to state so clients see the contract
+    this.state.contractType = this.contract.type;
+    this.state.contractBidderId = this.contract.bidderId;
+    this.state.contractPartners = new ArraySchema(...this.contract.partners);
+    this.state.trumpSuit = this.contract.trumpSuit || "";
+    console.log('✅ Contract configured:', this.contract);
+  }
+  scoreContract() {
+    const contract = this.contract;
+    if (!contract) {
+      console.warn('⚠️ No contract found. Skipping scoring.');
+      return;
+    }
+
+    const bidType = contract.type;
+    console.log(`🧾 Scoring contract type: ${bidType}`);
+
+    switch (bidType) {
+      case BID.Vraag:
+      case BID.Meegaan:
+        this.scoreVraagMeegaan();
+        break;
+
+      case BID.AlleenGaan:
+        this.scoreAlleenGaan();
+        break;
+
+      case BID.GeenDames:
+        this.scoreGeenDames();
+        break;
+
+      case BID.Pico:
+        this.scorePico();
+        break;
+
+      case BID.Misere:
+      case BID.OpenMisere:
+        this.scoreMisere();
+        break;
+
+      case BID.Troel:
+        this.scoreTroel();
+        break;
+
+      case BID.Abondance:
+      case BID.AbondanceInTroef:
+        this.scoreAbondance();
+        break;
+
+      case BID.SoloSlim:
+        this.scoreSoloSlim();
+        break;
+
+      default:
+        console.warn('⚠️ Unknown contract type. No scoring applied.');
+        break;
+    }
+  }
+  scoreVraagMeegaan() {
+    let totalTricks = 0;
+    for (const pid of this.contract.partners) {
+      totalTricks += this.state.players.get(pid).tricksWon;
+    }
+
+    if (totalTricks >= 8) {
+      for (const pid of this.contract.partners) {
+        this.state.players.get(pid).score += 10;
+      }
+      console.log(`✅ Vraag/Meegaan team succeeded! +10 each.`);
+    } else {
+      for (const pid of this.contract.partners) {
+        this.state.players.get(pid).score -= 10;
+      }
+      console.log(`❌ Vraag/Meegaan team failed. -10 each.`);
+    }
+  }
+  scoreAlleenGaan() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon >= 8) {
+      player.score += 20;
+      console.log(`✅ AlleenGaan success! +20`);
+    } else {
+      player.score -= 20;
+      console.log(`❌ AlleenGaan failed. -20`);
+    }
+  }
+  scoreMisere() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon === 0) {
+      player.score += 25;
+      console.log(`✅ Misere success! +25`);
+    } else {
+      player.score -= 25;
+      console.log(`❌ Misere failed. -25`);
+    }
+  }
+  scorePico() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon === 1) {
+      player.score += 25;
+      console.log(`✅ Pico success! +25`);
+    } else {
+      player.score -= 25;
+      console.log(`❌ Pico failed. -25`);
+    }
+  }
+  scoreGeenDames() {
+    for (const player of this.state.players.values()) {
+      let queenCount = player.capturedCards.filter(card => card.rank.toLowerCase() === 'queen').length;
+      if (queenCount > 0) {
+        const penalty = queenCount * 20;
+        player.score -= penalty;
+        console.log(`❌ ${player.name} captured ${queenCount} Queen(s). -${penalty} points.`);
+      } else {
+        console.log(`✅ ${player.name} avoided all Queens! No penalty.`);
+      }
+    }
+  }
+  scoreTroel() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon >= 10) {
+      player.score += 30;
+      console.log(`✅ Troel success! +30`);
+    } else {
+      player.score -= 30;
+      console.log(`❌ Troel failed. -30`);
+    }
+  }
+  scoreAbondance() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon >= 9) {
+      player.score += 40;
+      console.log(`✅ Abondance success! +40`);
+    } else {
+      player.score -= 40;
+      console.log(`❌ Abondance failed. -40`);
+    }
+  }
+  scoreSoloSlim() {
+    const player = this.state.players.get(this.contract.bidderId);
+    if (player.tricksWon === 13) {
+      player.score += 50;
+      console.log(`✅ SoloSlim success! +50`);
+    } else {
+      player.score -= 50;
+      console.log(`❌ SoloSlim failed. -50`);
+    }
   }
 }
