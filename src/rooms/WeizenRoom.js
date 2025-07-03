@@ -5,6 +5,8 @@ import { Player } from '../schema/Player.js';
 import { Card } from '../schema/Card.js';
 import { BidEntry } from '../schema/BidEntry.js';
 
+const suit_icon = "♥️♦️♣️♠️";
+
 const PHASES = {
   WAITING: "waiting",
   DEALING: "dealing",
@@ -71,6 +73,7 @@ export class WeizenRoom extends Room {
     this.cardPlayedUser = [];
     this.trickSuit = "";
     this.trickPlayerCards = {};
+    this.roundReadyUser = [];
     this.trumpCard = new Card("ace", "spades");
 
     this.onMessage("ready", (client, ready) => this.handleReady(client, ready));
@@ -78,6 +81,7 @@ export class WeizenRoom extends Room {
     this.onMessage("bid", (client, bid) => this.handleBid(client, bid));
     this.onMessage("playCard", (client, card) => this.handlePlayCard(client, card));
     this.onMessage("playCardReady", (client) => this.handlePlayCardReady(client));
+    this.onMessage("roundReady", (client) => this.handleNextRoundReady(client));
   }
 
   async onAuth(client, options) {
@@ -104,6 +108,7 @@ export class WeizenRoom extends Room {
     player.bid = 0;
     player.tricksWon = 0;
     player.score = 0;
+    player.roundscore = 0;
 
     this.state.players.set(client.sessionId, player);
 
@@ -181,8 +186,9 @@ export class WeizenRoom extends Room {
       player.hand.push(...hands[id]);
       player.bid = 0;
       player.tricksWon = 0;
+      player.roundscore = 0;
       // console.log(player.hand.map(card => `${card.rank} of ${card.suit}`));
-      console.log(`✅ Hand for ${player.name}:`, player.hand.map(card => `${card.rank} of ${card.suit}`));
+      // console.log(`✅ Hand for ${player.name}:`, player.hand.map(card => `${card.rank} of ${card.suit}`));
     }
   }
 
@@ -309,8 +315,6 @@ export class WeizenRoom extends Room {
       this.trickSuit = playedCard.suit;
     }
 
-    let a = [];
-    
     let suitcards = player.hand.filter(c => (c.suit === this.trickSuit));
     if (playedCard.suit != this.trickSuit && suitcards.length > 0) { // resend turn;
       this.promptNextPlayer();
@@ -348,7 +352,9 @@ export class WeizenRoom extends Room {
     if (this.state.currentTurnIndex >= this.state.turnOrder.length) {
       console.log('✅ Trick complete');
       if (this.isRoundOver()) {
-        this.scoreRound();
+        this.startNextTrick(false);
+        setTimeout(() => this.scoreRound(), 3000);
+        // this.scoreRound();
       } else {
         this.startNextTrick();
       }
@@ -364,14 +370,25 @@ export class WeizenRoom extends Room {
     return true;
   }
 
-scoreRound() {
-  console.log('✅ Scoring phase...');
-  this.state.phase = PHASES.SCORING;
+  scoreRound() {
+    console.log('✅ Scoring phase...');
 
-  this.scoreContract();
+    this.scoreContract();
+    
+    this.roundReadyUser = [];
+    this.state.phase = PHASES.SCORING;
+  }
 
-  setTimeout(() => this.prepareNextRound(), 3000);
-}
+  handleNextRoundReady(client) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || this.state.phase !== PHASES.SCORING) return;
+    
+    this.roundReadyUser.push(client.sessionId);
+    
+    if (this.roundReadyUser.length === this.maxClients) {
+      setTimeout(() => this.prepareNextRound(), 3000);
+    }
+  }
 
   prepareNextRound() {
     console.log('🔄 Preparing next round');
@@ -391,7 +408,7 @@ scoreRound() {
     this.startGame();
   }
 
-  startNextTrick() {
+  startNextTrick(next = true) {
 
     // who is won & refresh players score
     var winner = null;
@@ -403,24 +420,25 @@ scoreRound() {
       let playedCard = this.trickPlayerCards[id];
       let winnerCard = this.trickPlayerCards[winner.id];
 
-      let winnerRankVal = ranks.indexOf(winnerCard.rank);
+      let winnerValue = ranks.indexOf(winnerCard.rank);
+      let playerValue = ranks.indexOf(playedCard.rank);
       
-      if (this.contract.trumpSuit && winnerCard.suit == this.contract.trumpSuit) winnerRankVal += 13;
-      if (this.contract.trumpSuit && playedCard.suit == this.contract.trumpSuit) rankVal += 13;
+      if (this.contract.trumpSuit != "" && winnerCard.suit == this.contract.trumpSuit) winnerValue += 13;
+      if (this.contract.trumpSuit != "" && playedCard.suit == this.contract.trumpSuit) playerValue += 13;
 
-      let rankVal = ranks.indexOf(playedCard.rank);
-      if (playedCard.suit == this.trickSuit) rankVal += 13;
-      if (playedCard.suit == this.trumpCard.suit) rankVal += 13;
-      if (rankVal > winnerRankVal) {
+      if (playedCard.suit == this.trickSuit) playerValue += 13;
+      if (winnerCard.suit == this.trickSuit) winnerValue += 13;
+
+      if (playerValue > winnerValue) {
         winner = player;
-      }      
+      }
     }
 
     winner.tricksWon += 1;
 
     // NEW: Add all cards from the trick to winner's captured pile
     for (const card of Object.values(this.trickPlayerCards)) {
-      winner.capturedCards.push(card);
+      winner.capturedCards.push(new Card(card.rank, card.suit));
     }
 
     this.broadcast("tricksWon", { playerId: winner.id, card: this.trickPlayerCards[winner.id] });
@@ -429,12 +447,19 @@ scoreRound() {
     this.trickPlayerCards = {};
     this.cardPlayedUser = [];
 
-    let winnerIndex = this.state.turnOrder.indexOf(winner.id);
-    this.rotateLeft(this.state.turnOrder, winnerIndex);
-    this.state.currentTurnIndex = 0;
-    console.log('🎯 Starting next trick');
-    this.promptNextPlayer();
+    if (next) {
+      let winnerIndex = this.state.turnOrder.indexOf(winner.id);
+      let newOrder = this.rotateLeft(this.state.turnOrder.toArray(), winnerIndex);
+      // console.log(newOrder);
+      this.state.turnOrder.clear();
+      this.state.turnOrder.push(...newOrder);
+
+      this.state.currentTurnIndex = 0;
+      console.log('🎯 Starting next trick');
+      this.promptNextPlayer();
+    }
   }
+
   rotateLeft(arr, n) {
     n = n % arr.length;
     return arr.slice(n).concat(arr.slice(0, n));
@@ -454,13 +479,13 @@ scoreRound() {
 
     // Meegaan: only valid if Vraag already declared
     if (bidType === BID.Meegaan) {
-      const vraagExists = this.state.biddingData.bids.some(b => b.bidType === BID.Vraag);
+      const vraagExists = this.state.bids.some(b => b.bidType === BID.Vraag);
       if (!vraagExists) {
         throw new Error('Cannot Meegaan without Vraag!');
       }
 
       // Only one Meegaan allowed
-      const meegaanCount = this.state.biddingData.bids.filter(b => b.bidType === BID.Meegaan).length;
+      const meegaanCount = this.state.bids.filter(b => b.bidType === BID.Meegaan).length;
       if (meegaanCount >= 1) {
         throw new Error('Only one Meegaan allowed!');
       }
@@ -626,11 +651,13 @@ scoreRound() {
     if (totalTricks >= 8) {
       for (const pid of this.contract.partners) {
         this.state.players.get(pid).score += 10;
+        this.state.players.get(pid).roundscore = 10;
       }
       console.log(`✅ Vraag/Meegaan team succeeded! +10 each.`);
     } else {
       for (const pid of this.contract.partners) {
         this.state.players.get(pid).score -= 10;
+        this.state.players.get(pid).roundscore = -10;
       }
       console.log(`❌ Vraag/Meegaan team failed. -10 each.`);
     }
@@ -639,9 +666,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon >= 8) {
       player.score += 20;
+      player.roundscore = 20;
       console.log(`✅ AlleenGaan success! +20`);
     } else {
       player.score -= 20;
+      player.roundscore = -20;
       console.log(`❌ AlleenGaan failed. -20`);
     }
   }
@@ -649,9 +678,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon === 0) {
       player.score += 25;
+      player.roundscore = +25;
       console.log(`✅ Misere success! +25`);
     } else {
       player.score -= 25;
+      player.roundscore = -25;
       console.log(`❌ Misere failed. -25`);
     }
   }
@@ -659,9 +690,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon === 1) {
       player.score += 25;
+      player.roundscore = +25;
       console.log(`✅ Pico success! +25`);
     } else {
       player.score -= 25;
+      player.roundscore = -25;
       console.log(`❌ Pico failed. -25`);
     }
   }
@@ -671,6 +704,7 @@ scoreRound() {
       if (queenCount > 0) {
         const penalty = parseInt(queenCount * 20);
         player.score -= penalty;
+        player.roundscore = -penalty;
         console.log(`❌ ${player.name} captured ${queenCount} Queen(s). -${penalty} points.`);
       } else {
         console.log(`✅ ${player.name} avoided all Queens! No penalty.`);
@@ -681,9 +715,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon >= 10) {
       player.score += 30;
+      player.roundscore = 30;
       console.log(`✅ Troel success! +30`);
     } else {
       player.score -= 30;
+      player.roundscore = -30;
       console.log(`❌ Troel failed. -30`);
     }
   }
@@ -691,9 +727,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon >= 9) {
       player.score += 40;
+      player.roundscore = +40;
       console.log(`✅ Abondance success! +40`);
     } else {
       player.score -= 40;
+      player.roundscore = -40;
       console.log(`❌ Abondance failed. -40`);
     }
   }
@@ -701,9 +739,11 @@ scoreRound() {
     const player = this.state.players.get(this.contract.bidderId);
     if (player.tricksWon === 13) {
       player.score += 50;
+      player.roundscore = +50;
       console.log(`✅ SoloSlim success! +50`);
     } else {
       player.score -= 50;
+      player.roundscore = -50;
       console.log(`❌ SoloSlim failed. -50`);
     }
   }
