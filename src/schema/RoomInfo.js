@@ -12,7 +12,7 @@ export class RoomInfo extends Schema {
   static defineSchema() {
     type("string")(this.prototype, "roomId");
     type("string")(this.prototype, "name");
-    type("number")(this.prototype, "playercount");
+    type("int32")(this.prototype, "playercount");
     type("boolean")(this.prototype, "isJoinable");
   }
 }

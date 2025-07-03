@@ -482,7 +482,7 @@ scoreRound() {
 
     if (sortedBids.length === 0) {
       console.log('⚠️ All players passed!');
-      return null;
+      return;
     }
 
     const winning = sortedBids[0];
@@ -508,7 +508,7 @@ scoreRound() {
       type: bidType,
       bidderId: bidderId,
       partners: [],
-      trumpSuit: null
+      trumpSuit: ""
     };
 
     // Default: use the dealer's last card as trump, if suit game
@@ -525,7 +525,7 @@ scoreRound() {
 
     // Misere and OpenMisere have NO trump
     if (bidType === BID.Misere || bidType === BID.OpenMisere || bidType === BID.Pico || bidType === BID.GeenDames) {
-      this.contract.trumpSuit = null;
+      this.contract.trumpSuit = "";
     }
 
     // Handle partners
@@ -669,7 +669,7 @@ scoreRound() {
     for (const player of this.state.players.values()) {
       let queenCount = player.capturedCards.filter(card => card.rank.toLowerCase() === 'queen').length;
       if (queenCount > 0) {
-        const penalty = queenCount * 20;
+        const penalty = parseInt(queenCount * 20);
         player.score -= penalty;
         console.log(`❌ ${player.name} captured ${queenCount} Queen(s). -${penalty} points.`);
       } else {

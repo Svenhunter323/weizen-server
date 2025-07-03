@@ -1,4 +1,4 @@
-import {Schema, type} from '@colyseus/schema';
+import { Schema, type } from "@colyseus/schema";
 
 export class BidEntry extends Schema {
   constructor() {
@@ -8,8 +8,8 @@ export class BidEntry extends Schema {
   }
 
   static defineSchema() {
-    type("string")(this.prototype, "playerId");
-    type("number")(this.prototype, "bidType");
+    type("string")(this.prototype, "playerId"); // index 0
+    type("int32")(this.prototype, "bidType");  // index 1
   }
 }
 BidEntry.defineSchema();
