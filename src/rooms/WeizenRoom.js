@@ -4,6 +4,7 @@ import { WeizenState } from '../schema/WeizenState.js';
 import { Player } from '../schema/Player.js';
 import { Card } from '../schema/Card.js';
 import { BidEntry } from '../schema/BidEntry.js';
+import { verifyJWT } from "../util/jwt.util.js";
 
 const suit_icon = "♥️♦️♣️♠️";
 
@@ -87,21 +88,34 @@ export class WeizenRoom extends Room {
   async onAuth(client, options) {
     console.log(`🔐 Authenticating ${client.sessionId}`);
     // You could check a JWT or session token here
+    const token = options.token;
+    const user = verifyJWT(token);
+    if (!user) throw new Error("Unauthorized");
+    client.userData = user;
+
     return true;
   }
 
   onJoin(client, options) {
-    console.log(`✅ Player joined: ${client.sessionId}`);
 
     if (this.state.players.size >= this.maxClients) {
       console.warn('❌ Room full');
       client.leave();
       return;
     }
+    const username = client.userData?.username || "Guest";
+    // Check if the player has already joined
+    if (this.clients.find(c => c.userData?.id === client.userData.id && c.sessionId !== client.sessionId)) {
+      console.log(`❌ Player ${client.sessionId} is already in the room. Kicking them out.`);
+      client.leave();  // Kick out the player if they are already in the room
+      return;
+    }
+    console.log(`✅ Player joined: ${client.sessionId}`);
 
     const player = new Player();
     player.id = client.sessionId;
-    player.name = options.name || `Player-${this.state.players.size + 1}`;
+    // player.name = options.name || `Player-${this.state.players.size + 1}`;
+    player.name = username || `Player-${this.state.players.size + 1}`;
     // player.seat = `Seat-${this.state.players.size + 1}`;
     player.seat = `${this.state.players.size}`;
     player.hand = new ArraySchema();

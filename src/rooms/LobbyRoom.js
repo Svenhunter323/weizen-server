@@ -34,6 +34,13 @@ export class LobbyRoom extends ColyseusLobby {
   }
 
   onJoin(client, options) {
+    
+    // Check if the player has already joined
+    if (this.clients.find(c => c.sessionId !== client.sessionId && c.userData.id === client.userData.id)) {
+      console.log(`❌ Player ${client.sessionId} is already in the room. Kicking them out.`);
+      client.leave();  // Kick out the player if they are already in the room
+      return;
+    }
     console.log(`✅ Client joined lobby: ${client.sessionId}`);
 
     const username = client.userData?.username || "Guest";
