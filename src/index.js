@@ -8,7 +8,7 @@ import { connectDB } from './db/mongoose.js';
 import { addAuthRoutes } from './routes/authRoutes.js';
 import { LobbyRoom } from './rooms/LobbyRoom.js';
 import { WeizenRoom } from './rooms/WeizenRoom.js';
-const cors = require('cors');
+import cors from 'cors';
 
 import appConfig from './app.config.js';
 
