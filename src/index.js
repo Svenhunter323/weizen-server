@@ -8,7 +8,7 @@ import { connectDB } from './db/mongoose.js';
 import { addAuthRoutes } from './routes/authRoutes.js';
 import { LobbyRoom } from './rooms/LobbyRoom.js';
 import { WeizenRoom } from './rooms/WeizenRoom.js';
-import { default as cors } from 'cors';
+const cors = require('cors');
 
 import appConfig from './app.config.js';
 
@@ -21,17 +21,18 @@ await connectDB();
 const app = express();
 app.use(express.json());
 
+// Allow requests from Unity's domain or any specific domain
+app.use(cors({
+  origin: '*',  // This allows all origins
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 // Add authentication REST API routes
 addAuthRoutes(app);
 
 app.use("/colyseus", monitor());
 
-// Allow requests from Unity's domain or any specific domain
-app.use(cors({
-  origin: 'https://play.unity.com', // specify the exact origin if needed
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Create HTTP server (for Express + Colyseus)
 const server = http.createServer(app);
