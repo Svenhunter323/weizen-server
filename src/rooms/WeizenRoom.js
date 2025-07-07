@@ -105,17 +105,17 @@ export class WeizenRoom extends Room {
     }
     const username = client.userData?.username || "Guest";
     // Check if the player has already joined
-    if (this.clients.find(c => c.userData?.id === client.userData.id && c.sessionId !== client.sessionId)) {
-      console.log(`❌ Player ${client.sessionId} is already in the room. Kicking them out.`);
-      client.leave();  // Kick out the player if they are already in the room
-      return;
-    }
+    // if (this.clients.find(c => c.userData?.id === client.userData.id && c.sessionId !== client.sessionId)) {
+    //   console.log(`❌ Player ${client.sessionId} is already in the room. Kicking them out.`);
+    //   client.leave();  // Kick out the player if they are already in the room
+    //   return;
+    // }
     console.log(`✅ Player joined: ${client.sessionId}`);
 
     const player = new Player();
     player.id = client.sessionId;
-    // player.name = options.name || `Player-${this.state.players.size + 1}`;
-    player.name = username || `Player-${this.state.players.size + 1}`;
+    player.name = options.name || `Player-${this.state.players.size + 1}`;
+    // player.name = username || `Player-${this.state.players.size + 1}`;
     // player.seat = `Seat-${this.state.players.size + 1}`;
     player.seat = `${this.state.players.size}`;
     player.hand = new ArraySchema();
@@ -305,11 +305,12 @@ export class WeizenRoom extends Room {
   }
 
   startPlayPhase() {
-    this.state.phase = PHASES.PLAYING;
     this.state.currentTurnIndex = 0;
     this.trickSuit = "";
 
     this.configureContract();
+    
+    this.state.phase = PHASES.PLAYING;
 
     console.log('🎮 Play phase started');
     this.promptNextPlayer();
