@@ -6,11 +6,18 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
   password: {
     type: String,
     required: true
     // bcrypt-hashed string
-  }
+  },
+  refreshToken: String,
+  avatar: String
 }, {
   timestamps: true // optional: adds createdAt / updatedAt
 });

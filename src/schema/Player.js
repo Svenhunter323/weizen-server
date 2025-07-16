@@ -13,6 +13,7 @@ export class Player extends Schema {
     this.score = 0;
     this.roundscore = 0;
     this.capturedCards = new ArraySchema();
+    this.avatar = "";
   }
 
   static defineSchema() {
@@ -25,6 +26,7 @@ export class Player extends Schema {
     type("int32")(this.prototype, "score");                // index 6
     type("int32")(this.prototype, "roundscore");           // index 7
     type([Card])(this.prototype, "capturedCards");         // index 8
+    type("string")(this.prototype, "avatar");              // index 9
   }
 }
 Player.defineSchema();

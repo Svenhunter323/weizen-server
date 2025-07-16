@@ -69,6 +69,11 @@ export class WeizenRoom extends Room {
     this.state = new WeizenState();
 
     this.maxClients = 4;
+    
+    // New: track users for reconnection
+    this.userPlayers = new Map();      // userId -> Player
+    this.sessionToUserId = new Map();  // sessionId -> userId
+
     this.readyUser = {};
     this.dealReadyUser = {};
     this.cardPlayedUser = [];
@@ -93,50 +98,61 @@ export class WeizenRoom extends Room {
     if (!user) throw new Error("Unauthorized");
     client.userData = user;
 
+    // console.log("--------onAuth----->", user)
     return true;
   }
 
   onJoin(client, options) {
+    const userId = client.userData.id;
+    const username = client.userData.username || "Guest";
+    const avatar = client.userData.avatar || "/uploads/images/avatar/photo1.jpg";
 
-    if (this.state.players.size >= this.maxClients) {
-      console.warn('❌ Room full');
-      client.leave();
-      return;
+    console.log(`✅ Player joined: ${client.sessionId} (userId=${userId})`);
+
+    // Link sessionId to userId
+    this.sessionToUserId.set(client.sessionId, userId);
+
+    // Check if this user already has a Player object (reconnection)
+    let player;
+    if (this.userPlayers.has(userId)) {
+      console.log(`🔄 Reconnecting user ${userId}, restoring Player object.`);
+      player = this.userPlayers.get(userId);
+      player.id = client.sessionId;  // Update to new sessionId
+    } else {
+      console.log(`🆕 New user ${userId}, creating Player object.`);
+      player = new Player();
+      player.id = client.sessionId;
+      // player.name = options.name || `Player-${this.userPlayers.size + 1}`;
+      player.name = username || `Player-${this.userPlayers.size + 1}`;
+      player.avatar = avatar;
+      player.seat = `${this.state.players.size}`;
+      player.hand = new ArraySchema();
+      player.bid = 0;
+      player.tricksWon = 0;
+      player.score = 0;
+      player.roundscore = 0;
+
+      this.userPlayers.set(userId, player);
     }
-    const username = client.userData?.username || "Guest";
-    // Check if the player has already joined
-    // if (this.clients.find(c => c.userData?.id === client.userData.id && c.sessionId !== client.sessionId)) {
-    //   console.log(`❌ Player ${client.sessionId} is already in the room. Kicking them out.`);
-    //   client.leave();  // Kick out the player if they are already in the room
-    //   return;
-    // }
-    console.log(`✅ Player joined: ${client.sessionId}`);
 
-    const player = new Player();
-    player.id = client.sessionId;
-    player.name = options.name || `Player-${this.state.players.size + 1}`;
-    // player.name = username || `Player-${this.state.players.size + 1}`;
-    // player.seat = `Seat-${this.state.players.size + 1}`;
-    player.seat = `${this.state.players.size}`;
-    player.hand = new ArraySchema();
-    player.bid = 0;
-    player.tricksWon = 0;
-    player.score = 0;
-    player.roundscore = 0;
-
-    this.state.players.set(client.sessionId, player);
-
-    // if (this.state.players.size === this.maxClients) {
-    //   this.startGame();
-    // }
+    // Always store by *current* sessionId in state
+    this.state.players.set(player.id, player);
   }
 
   async onLeave(client, consented) {
+    const userId = this.sessionToUserId.get(client.sessionId);
+    if (!userId) {
+      console.warn(`❌ No userId mapping for session ${client.sessionId}`);
+      return;
+    }
+
     if (consented) {
-      console.log(`❎ Player left voluntarily: ${client.sessionId}`);
+      console.log(`❎ Player left voluntarily: ${client.sessionId} (userId=${userId})`);
       this.state.players.delete(client.sessionId);
+      this.userPlayers.delete(userId);
+      this.sessionToUserId.delete(client.sessionId);
     } else {
-      console.log(`⚠️ Player disconnected unexpectedly: ${client.sessionId}`);
+      console.log(`⚠️ Player disconnected unexpectedly: ${client.sessionId} (userId=${userId})`);
 
       try {
         await this.allowReconnection(client, 60);
@@ -144,6 +160,8 @@ export class WeizenRoom extends Room {
       } catch {
         console.log(`❌ Player ${client.sessionId} failed to reconnect in time`);
         this.state.players.delete(client.sessionId);
+        this.userPlayers.delete(userId);
+        this.sessionToUserId.delete(client.sessionId);
       }
     }
 
