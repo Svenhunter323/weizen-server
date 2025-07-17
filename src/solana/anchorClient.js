@@ -38,7 +38,7 @@ if (IDL.metadata?.address) {
   console.log("[SOLANA] Using PROGRAM_ID from IDL.address:", PROGRAM_ID.toBase58());
 } else {
   // fallback to hardcoded
-  PROGRAM_ID = new PublicKey("HPpivcEgThtNa92xDT99MVZewqtNUAxynJGvVCosJut4");
+  PROGRAM_ID = new PublicKey("qEhPGs7MtgXdWWMSmiJLiRSnooZcAoTHSXDXWhFUv3h");
   console.log("[SOLANA] Using hardcoded PROGRAM_ID:", PROGRAM_ID.toBase58());
 }
 

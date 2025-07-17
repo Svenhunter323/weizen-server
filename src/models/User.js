@@ -1,25 +1,37 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const UserSchema = new mongoose.Schema({
-  username: {
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  email: { type: String, required: true },
+  avatar: { type: String, default: "" },
+
+  // NEW FIELDS:
+  wznBalance: { type: Number, default: 100 },
+  cheatFlags: { type: Number, default: 0 },
+  roundHistory: [{
+    date: { type: Date, default: Date.now },
+    contractType: Number,
+    success: Boolean,
+    scoreDelta: Number
+  }],
+  ShopHistory: [{
+    date: { type: Date, default: Date.now },
     type: String,
-    required: true,
-    unique: true
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  password: {
-    type: String,
-    required: true
-    // bcrypt-hashed string
-  },
-  refreshToken: String,
-  avatar: String
-}, {
-  timestamps: true // optional: adds createdAt / updatedAt
+    success: Boolean,
+    amount: Number
+  }],
+  PubkeyStr: String,
+  entryFee: { type: Number, default: 0}
 });
 
-export const User = mongoose.model('User', UserSchema);
+userSchema.statics.getPubKeyById = async function (id) {
+  const user = await this.findById(id, 'PubkeyStr');
+  return user ? user.PubkeyStr : null;
+};
+userSchema.statics.getEntryFeeById = async function (id) {
+  const user = await this.findById(id, 'entryFee');
+  return user ? user.entryFee : 0;
+};
+
+export const User = mongoose.model('User', userSchema);

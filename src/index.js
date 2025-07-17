@@ -25,6 +25,7 @@ await connectDB();
 // Setup Express
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (e.g., from forms)
 
 // Allow CORS from any domain (or specify your frontend origin)
 app.use(cors({
@@ -37,6 +38,8 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Serve WebGL builds from /games/*
 app.use('/games', express.static(path.join(__dirname, '../public/games')));
+// Server Lobby
+app.use('/', express.static(path.join(__dirname, '../public/lobby')));
 
 // Add authentication REST API routes
 addAuthRoutes(app);

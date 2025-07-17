@@ -31,9 +31,12 @@ export function addAuthRoutes(app) {
 
   /** REGISTER */
   router.post('/register', async (req, res) => {
-    const { username, email, password } = req.body;
+    const { username, email, password, walletAddress } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Missing username or password' });
+    }
+    if (!walletAddress) {
+      return res.status(400).json({ error: 'Missing wallet address' });
     }
 
     try {
@@ -43,7 +46,7 @@ export function addAuthRoutes(app) {
       }
 
       const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-      const newUser = new User({ username, email, password: hashedPassword });
+      const newUser = new User({ username, email, password: hashedPassword, PubkeyStr: walletAddress });
 
       const accessToken = jwt.sign(
         { id: newUser._id, username, email },
@@ -109,7 +112,8 @@ export function addAuthRoutes(app) {
           id: user._id,
           username: user.username,
           email: user.email,
-          avatar: user.avatar
+          avatar: user.avatar,
+          wallet: user.PubkeyStr
         },
         accessToken,
         refreshToken
@@ -171,9 +175,9 @@ export function addAuthRoutes(app) {
   /** PROFILE UPDATE */
   router.post('/profile/update', upload.single('avatar'), async (req, res) => {
     try {
-      const { userId, username, email } = req.body;
+      const { userId, username, email, wallet } = req.body;
+      // console.log(req.body);
       const avatarPath = req.file ? `/uploads/avatars/${req.file.filename}` : null;
-      console.log(avatarPath);
 
       const user = await User.findById(userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -181,6 +185,7 @@ export function addAuthRoutes(app) {
       if (username) user.username = username;
       if (email) user.email = email;
       if (avatarPath) user.avatar = avatarPath;
+      if (wallet) user.PubkeyStr = wallet;
 
       await user.save();
 
@@ -190,7 +195,8 @@ export function addAuthRoutes(app) {
           id: user._id,
           username: user.username,
           email: user.email,
-          avatar: user.avatar
+          avatar: user.avatar,
+          wallet: user.PubkeyStr,
         }
       });
     } catch (err) {

@@ -25,16 +25,6 @@
           navigator.serviceWorker.register("ServiceWorker.js");
         }
       });
-      // Add this to your Unity template script or WebGL .jslib file
-      window.addEventListener('message', (e) => {
-        if (e.data && e.data.type === 'RESIZE') {
-          let canvas = document.querySelector('canvas');
-          if (canvas) {
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-          }
-        }
-      });
 
       var container = document.querySelector("#unity-container");
       var canvas = document.querySelector("#unity-canvas");

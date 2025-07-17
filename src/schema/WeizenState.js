@@ -10,6 +10,9 @@ export class WeizenState extends Schema {
     this.turnOrder = new ArraySchema();
     this.currentTurnIndex = 0;
     this.currentDealerIndex = 0;
+    this.dealerId = "";            // NEW: Current dealer ID
+    this.roundNumber = 1;          // NEW: Track round count
+
     this.bids = new ArraySchema();
     this.currentBidderId = "";
     this.winningBid;
@@ -25,13 +28,16 @@ export class WeizenState extends Schema {
     type([ "string" ])(this.prototype, "turnOrder");          // 2
     type("int32")(this.prototype, "currentTurnIndex");        // 3
     type("int32")(this.prototype, "currentDealerIndex");      // 4
-    type([ BidEntry ])(this.prototype, "bids");               // 5
-    type("string")(this.prototype, "currentBidderId");        // 6
-    type(BidEntry)(this.prototype, "winningBid");             // 7
-    type("int32")(this.prototype, "contractType");            // 8
-    type("string")(this.prototype, "contractBidderId");       // 9
-    type([ "string" ])(this.prototype, "contractPartners");   // 10
-    type("string")(this.prototype, "trumpSuit");              // 11
+    type("string")(this.prototype, "dealerId");               // 5 NEW
+    type("int32")(this.prototype, "roundNumber");             // 6 NEW
+    type([ BidEntry ])(this.prototype, "bids");               // 7
+    type("string")(this.prototype, "currentBidderId");        // 8
+    type(BidEntry)(this.prototype, "winningBid");             // 9
+    type("int32")(this.prototype, "contractType");            // 10
+    type("string")(this.prototype, "contractBidderId");       // 11
+    type([ "string" ])(this.prototype, "contractPartners");   // 12
+    type("string")(this.prototype, "trumpSuit");              // 13
   }
 }
+
 WeizenState.defineSchema();

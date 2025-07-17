@@ -1,5 +1,5 @@
 {
-  "address": "HPpivcEgThtNa92xDT99MVZewqtNUAxynJGvVCosJut4",
+  "address": "qEhPGs7MtgXdWWMSmiJLiRSnooZcAoTHSXDXWhFUv3h",
   "metadata": {
     "name": "wzn_staking",
     "version": "0.1.0",
@@ -62,6 +62,52 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "admin_force_claim",
+      "discriminator": [
+        255,
+        192,
+        239,
+        181,
+        73,
+        37,
+        189,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool",
+          "writable": true
+        },
+        {
+          "name": "user_state",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
     },
     {
       "name": "claim",
@@ -298,15 +344,30 @@
       ],
       "accounts": [
         {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "user_state",
           "writable": true
         },
         {
           "name": "authority",
-          "signer": true,
-          "relations": [
-            "user_state"
-          ]
+          "signer": true
         }
       ],
       "args": [
@@ -579,6 +640,11 @@
       "code": 6010,
       "name": "MathOverflow",
       "msg": "Math overflow."
+    },
+    {
+      "code": 6011,
+      "name": "Unauthorized",
+      "msg": "Unauthorized."
     }
   ],
   "types": [
