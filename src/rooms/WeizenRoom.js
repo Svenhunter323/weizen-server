@@ -106,6 +106,7 @@ export class WeizenRoom extends Room {
     console.log("User pubKey is "+pubkey);
     if (!pubkey) throw new Error("User PubKey Required");
     let balance = await getPlayBalance(pubkey);
+    // console.log(balance);
     if (balance < this.buyin) throw new Error("Insufficient balance");
     await resolveBalance(pubkey, this.buyin * -1);
     client.userData = user;
@@ -691,7 +692,7 @@ export class WeizenRoom extends Room {
       player.wznBalance = winamount;
       const client = this.clients.find(c => c.sessionId === player.id);
       resolveBalance(client.userData.id, winamount);
-      changeEntryFee(client.userData.id, -0.00001);
+      // this.changeEntryFee(client.userData.id, -0.00001);
     }
   }
   async changeEntryFee(userId, delta) {

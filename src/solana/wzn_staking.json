@@ -1,5 +1,5 @@
 {
-  "address": "qEhPGs7MtgXdWWMSmiJLiRSnooZcAoTHSXDXWhFUv3h",
+  "address": "2K3dJABqTuzGJ9SqZ4WLR9n1HmAZYgaMqvZfrEbWJ2gP",
   "metadata": {
     "name": "wzn_staking",
     "version": "0.1.0",
@@ -672,6 +672,10 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "go_live_time",
+            "type": "i64"
           }
         ]
       }

@@ -40,6 +40,9 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/games', express.static(path.join(__dirname, '../public/games')));
 // Server Lobby
 app.use('/', express.static(path.join(__dirname, '../public/lobby')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/lobby', 'index.html'));
+});
 
 // Add authentication REST API routes
 addAuthRoutes(app);

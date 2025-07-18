@@ -125,8 +125,9 @@ export function addAuthRoutes(app) {
   });
 
     /** VERIFY JWT */
-  router.get('/verify', (req, res) => {
+  router.post('/verify', (req, res) => {
     const authHeader = req.headers.authorization;
+    // console.log(req);
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ success: false, message: "No token provided" });
     }

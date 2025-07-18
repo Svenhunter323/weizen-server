@@ -38,7 +38,7 @@ if (IDL.metadata?.address) {
   console.log("[SOLANA] Using PROGRAM_ID from IDL.address:", PROGRAM_ID.toBase58());
 } else {
   // fallback to hardcoded
-  PROGRAM_ID = new PublicKey("qEhPGs7MtgXdWWMSmiJLiRSnooZcAoTHSXDXWhFUv3h");
+  PROGRAM_ID = new PublicKey("2K3dJABqTuzGJ9SqZ4WLR9n1HmAZYgaMqvZfrEbWJ2gP");
   console.log("[SOLANA] Using hardcoded PROGRAM_ID:", PROGRAM_ID.toBase58());
 }
 
@@ -81,7 +81,11 @@ function getConfigPda() {
  * @returns {Promise<number|null>}
  */
 export async function getPlayBalance(userPubkeyStr) {
-  if (!userPubkeyStr || typeof userPubkeyStr !== "string" || userPubkeyStr.length < 32) {
+  if (
+    !userPubkeyStr ||
+    typeof userPubkeyStr !== "string" ||
+    userPubkeyStr.length < 32
+  ) {
     throw new Error(`Invalid userPubkeyStr: "${userPubkeyStr}"`);
   }
 
@@ -90,11 +94,19 @@ export async function getPlayBalance(userPubkeyStr) {
 
   try {
     const userState = await program.account.userState.fetch(userStatePda);
-    console.log(`[getPlayBalance] User: ${userPubkeyStr}, PlayBalance: ${userState.playBalance.toString()}`);
-    return Number(userState.playBalance);
+    const rawBalance = new BN(userState.playBalance); // safest
+
+    // Format as float with 9 decimals
+    const rawStr = rawBalance.toString().padStart(10, "0"); // ensure length ≥ 10
+    const whole = rawStr.slice(0, -9) || "0";
+    const fraction = rawStr.slice(-9);
+    const formatted = `${whole}.${fraction}`;
+
+    console.log(`[getPlayBalance] User: ${userPubkeyStr}, PlayBalance: ${formatted}`);
+    return parseFloat(formatted);
   } catch (e) {
     console.error("[getPlayBalance] Error fetching userState:", e.message);
-    return null;
+    return 0;
   }
 }
 
@@ -118,10 +130,13 @@ export async function resolveBalance(userPubkeyStr, amount) {
   const userStatePda = getUserStatePda(userPubkey);
   const configPda = getConfigPda();
 
-  console.log(`[resolveBalance] Resolving for user ${userPubkeyStr}, amount ${amount}`);
+  // Convert amount to lamports (BN) with 9 decimals
+  const lamportsBN = new BN(Math.floor(amount * 1e9));
+
+  console.log(`[resolveBalance] Resolving for user ${userPubkeyStr}, amount ${amount} (${lamportsBN.toString()} lamports)`);
 
   const tx = await program.methods
-    .resolveBalance(new BN(amount))
+    .resolveBalance(lamportsBN)
     .accounts({
       config: configPda,
       userState: userStatePda,
