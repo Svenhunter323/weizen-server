@@ -6,6 +6,7 @@ import { WebSocketTransport } from '@colyseus/ws-transport';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import os from 'os';
 
 import { connectDB } from './db/mongoose.js';
 import { addAuthRoutes } from './routes/authRoutes.js';
@@ -66,9 +67,9 @@ gameServer.define('weizen', WeizenRoom).enableRealtimeListing();
 // Start listening
 gameServer.listen(PORT);
 
-console.log(`✅ Server ready at:
- - REST:    http://localhost:${PORT}/api
- - WS:      ws://localhost:${PORT}
- - Avatars: http://localhost:${PORT}/uploads
- - Admin:   http://localhost:${PORT}/colyseus
-`);
+// console.log(`✅ Server ready at:
+//  - REST:    http://localhost:${PORT}/api
+//  - WS:      ws://localhost:${PORT}
+//  - Avatars: http://localhost:${PORT}/uploads
+//  - Admin:   http://localhost:${PORT}/colyseus
+// `);
